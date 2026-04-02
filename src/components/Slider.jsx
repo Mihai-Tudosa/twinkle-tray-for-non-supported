@@ -27,7 +27,7 @@ export default class Slider extends Component {
         if (this.props.name) {
             return (
                 <div className="name-row">
-                    <div className="icon" style={{display: (this.props.icon === false ? "none" : "block")}}>{(this.props.monitortype == "wmi" ? <span>&#xE770;</span> : <span>&#xE7F4;</span>)}</div>
+                    <div className="icon" style={{display: (this.props.icon === false ? "none" : "block")}}>{(this.props.monitortype == "wmi" ? <span>&#xE770;</span> : <span>&#xE7F4;</span>)}{this.props.monitortype == "overlay" && <span className="overlay-badge" title="Overlay mode">&#xE81E;</span>}</div>
                     <div className="title">{this.props.name}</div>
                     {this.props.afterName}
                 </div>

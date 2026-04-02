@@ -229,6 +229,13 @@ body[data-use-native-animation="false"] {
     }
 }
 
+.overlay-badge {
+    font-size: 0.65em;
+    opacity: 0.6;
+    margin-left: 2px;
+    vertical-align: super;
+}
+
 .monitor-item {
     margin: 0 !important;
     height: 73px;

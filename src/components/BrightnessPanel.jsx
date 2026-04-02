@@ -219,7 +219,7 @@ const BrightnessPanel = memo(function BrightnessPanel() {
         let lastValidMonitor
         for(const key in state.monitors) {
           const monitor = state.monitors[key]
-          if(monitor.type == "wmi" || monitor.type == "studio-display" || (monitor.type == "ddcci" && monitor.brightnessType) || monitor.hdr === "active") {
+          if(monitor.type == "wmi" || monitor.type == "studio-display" || monitor.type == "overlay" || (monitor.type == "ddcci" && monitor.brightnessType) || monitor.hdr === "active") {
            lastValidMonitor = monitor 
           }
         }
@@ -262,7 +262,7 @@ const BrightnessPanel = memo(function BrightnessPanel() {
           if ((monitor.type == "none" && monitor.hdr !== "active") || window.settings?.hideDisplays?.[monitor.key] === true) {
             return (<div key={monitor.key}></div>)
           } else {
-            if (monitor.type == "wmi" || monitor.type == "studio-display" || (monitor.type == "ddcci" && monitor.brightnessType) || monitor.hdr === "active") {
+            if (monitor.type == "wmi" || monitor.type == "studio-display" || monitor.type == "overlay" || (monitor.type == "ddcci" && monitor.brightnessType) || monitor.hdr === "active") {
 
               let hasFeatures = true
               let featureCount = 0
@@ -328,7 +328,7 @@ const BrightnessPanel = memo(function BrightnessPanel() {
                   <div className="monitor-sliders extended" key={monitor.key}>
                     <div className="monitor-item" style={{ height: "auto", paddingBottom: "18px" }}>
                       <div className="name-row">
-                        <div className="icon">{(monitor.type == "wmi" ? <span>&#xE770;</span> : <span>&#xE7F4;</span>)}</div>
+                        <div className="icon">{(monitor.type == "wmi" ? <span>&#xE770;</span> : <span>&#xE7F4;</span>)}{monitor.type == "overlay" && <span className="overlay-badge" title="Overlay mode">&#xE81E;</span>}</div>
                         <div className="title">{getMonitorName(monitor, state.names)}</div>
                         {showPowerButton()}
                       </div>

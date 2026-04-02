@@ -71,6 +71,20 @@
         "<!@(node -p \"require('node-addon-api').include\")"
       ],
       'defines': [ 'NAPI_CPP_EXCEPTIONS' ],
+    },
+    {
+      "target_name": "windows_overlay",
+      "cflags!": [ ],
+      "cflags_cc!": [ ],
+      "sources": [ "windows_overlay.cc" ],
+      "include_dirs": [
+        "<!@(node -p \"require('node-addon-api').include\")"
+      ],
+      'msvs_settings': {
+        'VCCLCompilerTool': { "ExceptionHandling": 1, 'AdditionalOptions': [ '-std:c++17' ] }
+      },
+      'defines': [ 'NAPI_CPP_EXCEPTIONS' ],
+      'libraries': [ 'gdi32.lib' ]
     }
   ]
 }

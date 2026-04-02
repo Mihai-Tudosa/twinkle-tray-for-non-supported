@@ -827,6 +827,21 @@ export default class SettingsWindow extends PureComponent {
                             <br />{T.t("SETTINGS_MONITORS_DETAILS_MAX_BRIGHTNESS")}: <b>{(monitor.type !== "ddcci" ? T.t("GENERIC_NOT_SUPPORTED") : brightnessMax)}</b>
                             <br />{T.t("SETTINGS_MONITORS_DETAILS_BRIGHTNESS_NORMALIZATION")}: <b>{(monitor.type == "none" ? T.t("GENERIC_NOT_SUPPORTED") : monitor.min + " - " + monitor.max)}</b>
                             <br />{T.t("SETTINGS_MONITORS_DETAILS_HDR")}: <b>{(monitor.hdr == "active" ? T.t("GENERIC_ACTIVE") : monitor.hdr == "supported" ? T.t("GENERIC_SUPPORTED") : T.t("GENERIC_UNSUPPORTED"))}</b>
+                            <br />{"Brightness Method"}: <select value={this.state.rawSettings?.overlayDisplays?.[monitor.key] === true ? "overlay" : this.state.rawSettings?.overlayDisplays?.[monitor.key] === false ? "hardware" : "auto"} onChange={(e) => {
+                                const overlayDisplays = Object.assign({}, this.state.rawSettings?.overlayDisplays)
+                                if (e.target.value === "overlay") {
+                                    overlayDisplays[monitor.key] = true
+                                } else if (e.target.value === "hardware") {
+                                    overlayDisplays[monitor.key] = false
+                                } else {
+                                    delete overlayDisplays[monitor.key]
+                                }
+                                this.setSetting("overlayDisplays", overlayDisplays)
+                            }}>
+                                <option value="auto">Auto</option>
+                                <option value="overlay">Overlay</option>
+                                <option value="hardware">Hardware Only</option>
+                            </select>
                         </p>
                     </div>
                 )
@@ -987,6 +1002,8 @@ export default class SettingsWindow extends PureComponent {
             return (<><b>WMI</b> <span className="icon green vfix">&#xE73D;</span></>)
         } else if (type == "studio-display") {
             return (<><b>Studio Display</b> <span className="icon green vfix">&#xE73D;</span></>)
+        } else if (type == "overlay") {
+            return (<><b>Overlay</b> <span className="icon green vfix">&#xE73D;</span></>)
         } else {
             return (<><b>Unknown ({type})</b> <span className="icon red vfix">&#xEB90;</span></>)
         }

@@ -4,6 +4,7 @@ const PowerEvents = require("bindings")("windows_power_events");
 const MediaStatus = require("bindings")("windows_media_status");
 const AppStartup = require("bindings")("windows_app_startup");
 const WindowMaterial = require("bindings")("windows_window_material");
+const OverlayModule = require("bindings")("windows_overlay");
 
 module.exports = {
     WindowUtils: {
@@ -27,6 +28,16 @@ module.exports = {
     AppStartup: {
         enable: AppStartup.enable,
         disable: AppStartup.disable
+    },
+    Overlay: {
+        createOverlay: OverlayModule.createOverlay,
+        setOverlayOpacity: OverlayModule.setOverlayOpacity,
+        repositionOverlay: OverlayModule.repositionOverlay,
+        destroyOverlay: OverlayModule.destroyOverlay,
+        destroyAllOverlays: OverlayModule.destroyAllOverlays,
+        getGdiDeviceName: OverlayModule.getGdiDeviceName,
+        setGammaRamp: OverlayModule.setGammaRamp,
+        resetGammaRamp: OverlayModule.resetGammaRamp
     },
     WindowMaterial: {
         setWindowMaterial: (hwnd, materialType = 1, cornersType = 2, darkModeSupported = true) => {

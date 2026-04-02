@@ -139,6 +139,8 @@ function getDebugMonitorType(type) {
         return (<><b>WMI</b> <span className="icon green vfix">&#xE73D;</span></>)
     } else if (type == "studio-display") {
         return (<><b>Studio Display</b> <span className="icon green vfix">&#xE73D;</span></>)
+    } else if (type == "overlay") {
+        return (<><b>Overlay</b> <span className="icon green vfix">&#xE73D;</span></>)
     } else {
         return (<><b>Unknown ({type})</b> <span className="icon red vfix">&#xEB90;</span></>)
     }

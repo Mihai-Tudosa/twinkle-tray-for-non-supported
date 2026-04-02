@@ -427,6 +427,21 @@ getAllMonitors = async (ddcciMethod = "default") => {
         }
     }
 
+    // Assign overlay type to unsupported monitors (or user-overridden ones)
+    for (const hwid2 in foundMonitors) {
+        const monitor = foundMonitors[hwid2]
+        const overlayOverride = settings?.overlayDisplays?.[hwid2]
+        if (overlayOverride === true) {
+            // User forced overlay mode for this monitor
+            monitor.type = "overlay"
+        } else if (overlayOverride === false) {
+            // User explicitly disabled overlay (hardware only) — keep current type
+        } else if (monitor.type === "none") {
+            // Auto: unsupported monitors default to overlay
+            monitor.type = "overlay"
+        }
+    }
+
     // Finally, fix names/num
     try {
         let idx = 0
@@ -931,7 +946,17 @@ function setBrightness(brightness, id) {
                 monitor.brightness = brightness
                 // Check if user has set a custom brightness VCP code for this monitor
                 const hasCustomBrightnessVCP = monitor.hwid && ddcBrightnessVCPs[monitor.hwid[1]]
-                if (monitor.type == "studio-display") {
+                if (monitor.type == "overlay") {
+                    // Overlay brightness is handled by the main process
+                    const opacity = Math.round((1 - brightness / 100) * 230)
+                    process.send({
+                        type: "overlayBrightness",
+                        id: monitor.id,
+                        key: monitor.key,
+                        opacity: opacity,
+                        brightness: brightness
+                    })
+                } else if (monitor.type == "studio-display") {
                     setStudioDisplayBrightness(monitor.serial, brightness)
                 } else if(!settings.disableHighLevel && monitor.highLevelSupported?.brightness && !hasCustomBrightnessVCP) {
                     setHighLevelBrightness(monitor.hwid.join("#"), brightness)

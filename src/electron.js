@@ -67,7 +67,7 @@ const { fork, exec } = require('child_process');
 const { VerticalRefreshRateContext, addDisplayChangeListener } = require("win32-displayconfig");
 const refreshCtx = new VerticalRefreshRateContext();
 
-const {WindowUtils, MediaStatus, PowerEvents, AppStartup} = require("tt-windows-utils")
+const {WindowUtils, MediaStatus, PowerEvents, AppStartup, Overlay} = require("tt-windows-utils")
 const setWindowPos = () => { }
 const AccentColors = require("windows-accent-colors")
 const Acrylic = require("acrylic")
@@ -202,6 +202,21 @@ function startMonitorThread() {
       if (data.type === "ddcciModeTestResult") {
         ddcciModeTestResult = data.value
         settings.lastDetectedDDCCIMethod = (data.value ? "fast" : "accurate")
+      }
+      if (data.type === "overlayBrightness") {
+        const key = data.key
+        if (Overlay && overlayHandles[key] && !overlayGammaActive[key]) {
+            Overlay.setOverlayOpacity(overlayHandles[key], data.opacity)
+        } else if (Overlay && overlayGammaActive[key]) {
+            const monitor = monitors[key]
+            if (monitor?.bounds?.position) {
+                const gdiName = Overlay.getGdiDeviceName(monitor.bounds.position.x, monitor.bounds.position.y)
+                if (gdiName) {
+                    const brightness = Math.max(10, data.brightness)
+                    Overlay.setGammaRamp(gdiName, brightness)
+                }
+            }
+        }
       }
       monitorsEventEmitter.emit(data.type, data)
     }
@@ -431,6 +446,152 @@ function pingAnalytics() {
 }
 
 let monitors = {}
+let overlayHandles = {}       // { monitorKey: overlayId }
+let overlayGammaActive = {}   // { monitorKey: true } when gamma ramp is active
+let fullscreenCheckInterval = null
+
+function createOverlayForMonitor(monitor) {
+    if (!Overlay || !monitor?.bounds) return false
+    if (overlayHandles[monitor.key]) return overlayHandles[monitor.key]
+    try {
+        const b = monitor.bounds
+        const id = Overlay.createOverlay(b.position.x, b.position.y, b.width, b.height)
+        if (id > 0) {
+            overlayHandles[monitor.key] = id
+            const brightness = monitor.brightness ?? 100
+            const opacity = Math.round((1 - brightness / 100) * 230)
+            Overlay.setOverlayOpacity(id, opacity)
+            console.log(`Overlay created for ${monitor.key} (id: ${id})`)
+        }
+        return id
+    } catch (e) {
+        console.log(`Failed to create overlay for ${monitor.key}:`, e)
+        return false
+    }
+}
+
+function destroyOverlayForMonitor(monitorKey) {
+    if (!Overlay) return
+    const id = overlayHandles[monitorKey]
+    if (id) {
+        Overlay.destroyOverlay(id)
+        delete overlayHandles[monitorKey]
+        console.log(`Overlay destroyed for ${monitorKey}`)
+    }
+    if (overlayGammaActive[monitorKey]) {
+        const monitor = monitors[monitorKey]
+        if (monitor?.bounds?.position) {
+            try {
+                const gdiName = Overlay.getGdiDeviceName(monitor.bounds.position.x, monitor.bounds.position.y)
+                if (gdiName) Overlay.resetGammaRamp(gdiName)
+            } catch(e) {}
+        }
+        delete overlayGammaActive[monitorKey]
+    }
+}
+
+function destroyAllOverlayWindows() {
+    if (!Overlay) return
+    try {
+        Overlay.destroyAllOverlays()
+    } catch(e) {}
+    for (const key in overlayGammaActive) {
+        const monitor = monitors[key]
+        if (monitor?.bounds?.position) {
+            try {
+                const gdiName = Overlay.getGdiDeviceName(monitor.bounds.position.x, monitor.bounds.position.y)
+                if (gdiName) Overlay.resetGammaRamp(gdiName)
+            } catch(e) {}
+        }
+    }
+    overlayHandles = {}
+    overlayGammaActive = {}
+}
+
+function repositionAllOverlays() {
+    if (!Overlay) return
+    for (const key in overlayHandles) {
+        const monitor = monitors[key]
+        if (monitor?.bounds?.position) {
+            const b = monitor.bounds
+            Overlay.repositionOverlay(overlayHandles[key], b.position.x, b.position.y, b.width, b.height)
+        }
+    }
+}
+
+function syncOverlaysWithMonitors() {
+    if (!Overlay) return
+    for (const key in monitors) {
+        if (monitors[key].type === "overlay" && !overlayHandles[key]) {
+            createOverlayForMonitor(monitors[key])
+        }
+    }
+    for (const key in overlayHandles) {
+        if (!monitors[key] || monitors[key].type !== "overlay") {
+            destroyOverlayForMonitor(key)
+        }
+    }
+    repositionAllOverlays()
+}
+
+function startFullscreenDetection() {
+    if (fullscreenCheckInterval) return
+    fullscreenCheckInterval = setInterval(() => {
+        if (!Overlay || Object.keys(overlayHandles).length === 0) return
+        try {
+            const fgHwnd = WindowUtils.getForegroundWindow()
+            if (!fgHwnd) return
+            const isFullscreen = WindowUtils.getWindowFullscreen(fgHwnd)
+
+            if (isFullscreen) {
+                const fgPos = WindowUtils.getWindowPos(fgHwnd)
+                for (const key in overlayHandles) {
+                    const monitor = monitors[key]
+                    if (!monitor?.bounds?.position) continue
+                    const b = monitor.bounds
+                    if (fgPos.left === b.position.x && fgPos.top === b.position.y &&
+                        fgPos.width === b.width && fgPos.height === b.height) {
+                        if (!overlayGammaActive[key]) {
+                            overlayGammaActive[key] = true
+                            Overlay.setOverlayOpacity(overlayHandles[key], 0)
+                            const brightness = Math.max(10, monitor.brightness ?? 100)
+                            const gdiName = Overlay.getGdiDeviceName(b.position.x, b.position.y)
+                            if (gdiName) {
+                                Overlay.setGammaRamp(gdiName, brightness)
+                            }
+                            console.log(`Fullscreen detected on ${key}, switching to gamma ramp`)
+                        }
+                    }
+                }
+            } else {
+                for (const key in overlayGammaActive) {
+                    if (overlayGammaActive[key]) {
+                        const monitor = monitors[key]
+                        if (monitor?.bounds?.position) {
+                            const gdiName = Overlay.getGdiDeviceName(monitor.bounds.position.x, monitor.bounds.position.y)
+                            if (gdiName) Overlay.resetGammaRamp(gdiName)
+                        }
+                        const brightness = monitor?.brightness ?? 100
+                        const opacity = Math.round((1 - brightness / 100) * 230)
+                        if (overlayHandles[key]) {
+                            Overlay.setOverlayOpacity(overlayHandles[key], opacity)
+                        }
+                        delete overlayGammaActive[key]
+                        console.log(`Fullscreen ended on ${key}, switching back to overlay`)
+                    }
+                }
+            }
+        } catch (e) { }
+    }, 2000)
+}
+
+function stopFullscreenDetection() {
+    if (fullscreenCheckInterval) {
+        clearInterval(fullscreenCheckInterval)
+        fullscreenCheckInterval = null
+    }
+}
+
 let mainWindow;
 let tray = null
 let lastTheme = false
@@ -830,6 +991,11 @@ function processSettings(newSettings = {}, sendUpdate = true) {
       }
     }
 
+    if (newSettings.overlayDisplays !== undefined) {
+      // Overlay display settings changed — need full refresh to reclassify monitors
+      shouldRefreshMonitors = true
+    }
+
     if (app.isReady() && newSettings.preferredDDCCIMethod) {
       monitorsThread.send({
         type: "flushvcp"
@@ -1084,7 +1250,7 @@ function applyProfile(profile = {}, useTransition = false, transitionSpeed = 1, 
         if(shouldSkipDisplay(monitor)) continue;
 
         // Apply brightness to valid display types
-        if (monitor.type == "wmi" || monitor.type == "studio-display" || (monitor.type == "ddcci" && monitor.brightnessType)) {
+        if (monitor.type == "wmi" || monitor.type == "studio-display" || monitor.type == "overlay" || (monitor.type == "ddcci" && monitor.brightnessType)) {
           // Replace DDC/CI brightness with SDR
           if(settings.sdrAsMainSliderDisplays?.[monitor.key] && monitor.hdr === "active") {
             monitor.brightness = monitor.sdrLevel
@@ -1325,7 +1491,7 @@ async function hotkeyOverlayShow() {
   panelState = "overlay"
   let monitorCount = 0
   Object.values(monitors).forEach((monitor) => {
-    if ((monitor.type === "ddcci" || monitor.type === "studio-display" || monitor.type === "wmi") && (settings?.hideDisplays?.[monitor.key] !== true)) monitorCount++;
+    if ((monitor.type === "ddcci" || monitor.type === "studio-display" || monitor.type === "wmi" || monitor.type === "overlay") && (settings?.hideDisplays?.[monitor.key] !== true)) monitorCount++;
   })
 
   if (monitorCount && settings.linkedLevelsActive) {
@@ -1916,6 +2082,9 @@ async function refreshMonitors(fullRefresh = false, bypassRateLimit = false) {
 
     monitors = newMonitors;
 
+    // Sync overlay windows with current monitor state
+    syncOverlaysWithMonitors()
+
     // Only send update if something changed
     if (JSON.stringify(newMonitors) !== JSON.stringify(oldMonitors)) {
       setTrayPercent()
@@ -2056,6 +2225,14 @@ function updateBrightness(index, newLevel, useCap = true, vcpValue = "brightness
         monitor.brightness = level
         monitor.brightnessRaw = normalized
       }
+    } else if (monitor.type === "overlay") {
+      monitor.brightness = level
+      monitor.brightnessRaw = level
+      monitorsThread.send({
+          type: "brightness",
+          brightness: level,
+          id: monitor.id
+      })
     } else if (monitor.type == "ddcci") {
       if (vcp === "brightness") {
         monitor.brightness = level
@@ -3261,6 +3438,7 @@ app.on("ready", async () => {
     })
 
     isRefreshing = false
+    startFullscreenDetection()
     await refreshMonitors(true, true)
 
     if (settings.brightnessAtStartup) setKnownBrightness();
@@ -3293,6 +3471,10 @@ app.on("activate", () => {
 });
 
 app.on('quit', () => {
+  try {
+    stopFullscreenDetection()
+    destroyAllOverlayWindows()
+  } catch (e) { }
   try {
     tray.destroy()
   } catch (e) {
@@ -3427,7 +3609,7 @@ function setTrayPercent() {
       let averagePerc = 0
       let i = 0
       for (let key in monitors) {
-        if (monitors[key].type === "ddcci" || monitors[key].type === "wmi") {
+        if (monitors[key].type === "ddcci" || monitors[key].type === "wmi" || monitors[key].type === "overlay") {
           i++
           averagePerc += monitors[key].brightness
         }
